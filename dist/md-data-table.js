@@ -238,8 +238,8 @@
                 paginatedRows: '=',
                 mdtRow: '=',
                 mdtRowPaginator: '&?',
-                mdtRowPaginatorErrorMessage:"@",
-                mdtRowPaginatorNoResultsMessage:"@",
+                mdtRowPaginatorErrorMessage:'@',
+                mdtRowPaginatorNoResultsMessage:'@',
                 virtualRepeat: '=',
                 mdtTriggerRequest: '&?',
                 mdtTranslations: '=?'
@@ -370,6 +370,170 @@
         .directive('mdtTable', mdtTableDirective);
 }());
 
+(function(){
+    'use strict';
+
+    ColumnAlignmentHelper.$inject = ['ColumnOptionProvider'];
+    function ColumnAlignmentHelper(ColumnOptionProvider){
+        var service = this;
+        service.getColumnAlignClass = getColumnAlignClass;
+
+        function getColumnAlignClass(alignRule) {
+            if (alignRule === ColumnOptionProvider.ALIGN_RULE.ALIGN_RIGHT) {
+                return 'rightAlignedColumn';
+            } else {
+                return 'leftAlignedColumn';
+            }
+        }
+    }
+
+    angular
+        .module('mdDataTable')
+        .service('ColumnAlignmentHelper', ColumnAlignmentHelper);
+}());
+(function(){
+    'use strict';
+
+    EditRowFeature.$inject = ['$mdDialog'];
+    function EditRowFeature($mdDialog){
+
+        var service = this;
+
+        service.addRequiredFunctions = function($scope, ctrl){
+
+            $scope.saveRow = function(rowData){
+                var rawRowData = ctrl.dataStorage.getSavedRowData(rowData);
+
+                $scope.saveRowCallback({row: rawRowData});
+            };
+
+            $scope.showEditDialog = function(ev, cellData, rowData){
+                var rect = ev.currentTarget.closest('td').getBoundingClientRect();
+                var position = {
+                    top: rect.top,
+                    left: rect.left
+                };
+
+                var ops = {
+                    controller: 'InlineEditModalCtrl',
+                    targetEvent: ev,
+                    clickOutsideToClose: true,
+                    escapeToClose: true,
+                    focusOnOpen: false,
+                    locals: {
+                        position: position,
+                        cellData: JSON.parse(JSON.stringify(cellData)),
+                        mdtTranslations: $scope.mdtTranslations
+                    }
+                };
+
+                if(cellData.attributes.editableField === 'smallEditDialog'){
+                    ops.templateUrl = '/main/templates/smallEditDialog.html';
+                }else{
+                    ops.templateUrl = '/main/templates/largeEditDialog.html';
+                }
+
+                var that = this;
+                $mdDialog.show(ops).then(function(cellValue){
+                    cellData.value = cellValue;
+
+                    that.saveRow(rowData);
+                });
+            };
+        }
+    }
+
+    angular
+        .module('mdDataTable')
+        .service('EditRowFeature', EditRowFeature);
+}());
+(function(){
+    'use strict';
+
+    PaginationFeature.$inject = ['mdtPaginationHelperFactory', 'mdtAjaxPaginationHelperFactory'];
+    function PaginationFeature(mdtPaginationHelperFactory, mdtAjaxPaginationHelperFactory){
+        var service = this;
+
+        service.initFeature = initFeature;
+        service.startFeature = startFeature;
+
+        function initFeature(scope, ctrl){
+            if(!scope.mdtRowPaginator){
+                ctrl.mdtPaginationHelper = scope.mdtPaginationHelper = mdtPaginationHelperFactory
+                    .getInstance(ctrl.dataStorage, scope.paginatedRows, scope.mdtRow);
+            }else{
+                ctrl.mdtPaginationHelper = scope.mdtPaginationHelper = mdtAjaxPaginationHelperFactory.getInstance({
+                    dataStorage: ctrl.dataStorage,
+                    paginationSetting: scope.paginatedRows,
+                    mdtRowOptions: scope.mdtRow,
+                    mdtRowPaginatorFunction: scope.mdtRowPaginator,
+                    mdtRowPaginatorErrorMessage: scope.mdtRowPaginatorErrorMessage,
+                    mdtRowPaginatorNoResultsMessage: scope.mdtRowPaginatorNoResultsMessage,
+                    mdtTriggerRequest: scope.mdtTriggerRequest
+                });
+            }
+
+            scope.isPaginationEnabled = function(){
+                if(scope.paginatedRows === true ||
+                    (scope.paginatedRows && scope.paginatedRows.hasOwnProperty('isEnabled') && scope.paginatedRows.isEnabled === true)){
+                    return true;
+                }
+
+                return false;
+            };
+
+            ctrl.paginationFeature = {
+                startPaginationFeature: function() {
+                    if (scope.mdtRowPaginator) {
+                        scope.mdtPaginationHelper.fetchPage(1);
+                    }
+                }
+            };
+        }
+
+        function startFeature(ctrl){
+            ctrl.paginationFeature.startPaginationFeature();
+        }
+    }
+
+    angular
+        .module('mdDataTable')
+        .service('PaginationFeature', PaginationFeature);
+}());
+(function(){
+    'use strict';
+
+    function SelectableRowsFeatureFactory(){
+
+        function SelectableRowsFeature(params){
+            this.$scope = params.$scope;
+            this.ctrl = params.ctrl;
+
+            this.$scope.onCheckboxChange = _.bind(this.onCheckboxChange, this);
+        }
+
+        SelectableRowsFeature.prototype.onCheckboxChange = function(){
+            var that = this;
+            // we need to push it to the event loop to make it happen last
+            // (e.g.: all the elements can be selected before we call the callback)
+            setTimeout(function(){
+                that.$scope.selectedRowCallback({
+                    rows: that.ctrl.dataStorage.getSelectedRows()
+                });
+            },0);
+        };
+
+        return {
+            getInstance: function(params){
+                return new SelectableRowsFeature(params);
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .service('SelectableRowsFeature', SelectableRowsFeatureFactory);
+}());
 (function(){
     'use strict';
 
@@ -837,170 +1001,6 @@
 (function(){
     'use strict';
 
-    EditRowFeature.$inject = ['$mdDialog'];
-    function EditRowFeature($mdDialog){
-
-        var service = this;
-
-        service.addRequiredFunctions = function($scope, ctrl){
-
-            $scope.saveRow = function(rowData){
-                var rawRowData = ctrl.dataStorage.getSavedRowData(rowData);
-
-                $scope.saveRowCallback({row: rawRowData});
-            };
-
-            $scope.showEditDialog = function(ev, cellData, rowData){
-                var rect = ev.currentTarget.closest('td').getBoundingClientRect();
-                var position = {
-                    top: rect.top,
-                    left: rect.left
-                };
-
-                var ops = {
-                    controller: 'InlineEditModalCtrl',
-                    targetEvent: ev,
-                    clickOutsideToClose: true,
-                    escapeToClose: true,
-                    focusOnOpen: false,
-                    locals: {
-                        position: position,
-                        cellData: JSON.parse(JSON.stringify(cellData)),
-                        mdtTranslations: $scope.mdtTranslations
-                    }
-                };
-
-                if(cellData.attributes.editableField === 'smallEditDialog'){
-                    ops.templateUrl = '/main/templates/smallEditDialog.html';
-                }else{
-                    ops.templateUrl = '/main/templates/largeEditDialog.html';
-                }
-
-                var that = this;
-                $mdDialog.show(ops).then(function(cellValue){
-                    cellData.value = cellValue;
-
-                    that.saveRow(rowData);
-                });
-            };
-        }
-    }
-
-    angular
-        .module('mdDataTable')
-        .service('EditRowFeature', EditRowFeature);
-}());
-(function(){
-    'use strict';
-
-    PaginationFeature.$inject = ['mdtPaginationHelperFactory', 'mdtAjaxPaginationHelperFactory'];
-    function PaginationFeature(mdtPaginationHelperFactory, mdtAjaxPaginationHelperFactory){
-        var service = this;
-
-        service.initFeature = initFeature;
-        service.startFeature = startFeature;
-
-        function initFeature(scope, ctrl){
-            if(!scope.mdtRowPaginator){
-                ctrl.mdtPaginationHelper = scope.mdtPaginationHelper = mdtPaginationHelperFactory
-                    .getInstance(ctrl.dataStorage, scope.paginatedRows, scope.mdtRow);
-            }else{
-                ctrl.mdtPaginationHelper = scope.mdtPaginationHelper = mdtAjaxPaginationHelperFactory.getInstance({
-                    dataStorage: ctrl.dataStorage,
-                    paginationSetting: scope.paginatedRows,
-                    mdtRowOptions: scope.mdtRow,
-                    mdtRowPaginatorFunction: scope.mdtRowPaginator,
-                    mdtRowPaginatorErrorMessage: scope.mdtRowPaginatorErrorMessage,
-                    mdtRowPaginatorNoResultsMessage: scope.mdtRowPaginatorNoResultsMessage,
-                    mdtTriggerRequest: scope.mdtTriggerRequest
-                });
-            }
-
-            scope.isPaginationEnabled = function(){
-                if(scope.paginatedRows === true ||
-                    (scope.paginatedRows && scope.paginatedRows.hasOwnProperty('isEnabled') && scope.paginatedRows.isEnabled === true)){
-                    return true;
-                }
-
-                return false;
-            };
-
-            ctrl.paginationFeature = {
-                startPaginationFeature: function() {
-                    if (scope.mdtRowPaginator) {
-                        scope.mdtPaginationHelper.fetchPage(1);
-                    }
-                }
-            };
-        }
-
-        function startFeature(ctrl){
-            ctrl.paginationFeature.startPaginationFeature();
-        }
-    }
-
-    angular
-        .module('mdDataTable')
-        .service('PaginationFeature', PaginationFeature);
-}());
-(function(){
-    'use strict';
-
-    function SelectableRowsFeatureFactory(){
-
-        function SelectableRowsFeature(params){
-            this.$scope = params.$scope;
-            this.ctrl = params.ctrl;
-
-            this.$scope.onCheckboxChange = _.bind(this.onCheckboxChange, this);
-        }
-
-        SelectableRowsFeature.prototype.onCheckboxChange = function(){
-            var that = this;
-            // we need to push it to the event loop to make it happen last
-            // (e.g.: all the elements can be selected before we call the callback)
-            setTimeout(function(){
-                that.$scope.selectedRowCallback({
-                    rows: that.ctrl.dataStorage.getSelectedRows()
-                });
-            },0);
-        };
-
-        return {
-            getInstance: function(params){
-                return new SelectableRowsFeature(params);
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .service('SelectableRowsFeature', SelectableRowsFeatureFactory);
-}());
-(function(){
-    'use strict';
-
-    ColumnAlignmentHelper.$inject = ['ColumnOptionProvider'];
-    function ColumnAlignmentHelper(ColumnOptionProvider){
-        var service = this;
-        service.getColumnAlignClass = getColumnAlignClass;
-
-        function getColumnAlignClass(alignRule) {
-            if (alignRule === ColumnOptionProvider.ALIGN_RULE.ALIGN_RIGHT) {
-                return 'rightAlignedColumn';
-            } else {
-                return 'leftAlignedColumn';
-            }
-        }
-    }
-
-    angular
-        .module('mdDataTable')
-        .service('ColumnAlignmentHelper', ColumnAlignmentHelper);
-}());
-(function(){
-    'use strict';
-
     /**
      * @name ColumnOptionProvider
      * @returns possible assignable column options you can give
@@ -1019,6 +1019,189 @@
         .value('ColumnOptionProvider', ColumnOptionProvider);
 })();
 
+(function(){
+    'use strict';
+
+    mdtAddAlignClass.$inject = ['ColumnAlignmentHelper'];
+    function mdtAddAlignClass(ColumnAlignmentHelper){
+        return {
+            restrict: 'A',
+            scope: {
+                mdtAddAlignClass: '='
+            },
+            link: function($scope, element){
+                var classToAdd = ColumnAlignmentHelper.getColumnAlignClass($scope.mdtAddAlignClass);
+
+                element.addClass(classToAdd);
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .directive('mdtAddAlignClass', mdtAddAlignClass);
+}());
+(function(){
+    'use strict';
+
+    mdtAddHtmlContentToCellDirective.$inject = ['$parse', '$compile', '$rootScope'];
+    function mdtAddHtmlContentToCellDirective($parse, $compile, $rootScope){
+        return {
+            restrict: 'A',
+            require: '^?mdtTable',
+            link: function($scope, element, attr, ctrl){
+
+                $scope.$watch(function(){
+                    //this needs to be like that. Passing only `attr.mdtAddHtmlContentToCell` will cause digest to go crazy 10 times.
+                    // so we has to say explicitly that we only want to watch the content and nor the attributes, or the additional metadata.
+                    var val = $parse(attr.mdtAddHtmlContentToCell)($scope);
+
+                    return val.value;
+
+                }, function(val){
+                    element.empty();
+
+                    var originalValue = $parse(attr.mdtAddHtmlContentToCell)($scope);
+
+                    // ctrl doesn't exist on the first row, making html content impossible to show up.
+                    // TODO: make it as a global service .... I know but any better idea?
+                    if(originalValue.columnKey && ctrl && ctrl.dataStorage.customCells[originalValue.columnKey]){
+                        var customCellData = ctrl.dataStorage.customCells[originalValue.columnKey];
+
+                        var clonedHtml = customCellData.htmlContent;
+
+                        //append value to the scope
+                        var localScope = $rootScope.$new();
+
+                        localScope.clientScope = customCellData.scope;
+                        localScope.value = val;
+
+                        $compile(clonedHtml)(localScope, function(cloned){
+                            element.append(cloned);
+                        });
+
+                    }else{
+                        element.append(val);
+                    }
+
+                }, false);
+                // issue with false value. If fields are editable then it won't reflect the change.
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .directive('mdtAddHtmlContentToCell', mdtAddHtmlContentToCellDirective);
+}());
+(function(){
+    'use strict';
+
+    function mdtAnimateSortIconHandlerDirective(){
+        return {
+            restrict: 'A',
+            scope: false,
+            link: function($scope, element){
+                if($scope.animateSortIcon){
+                    element.addClass('animate-sort-icon');
+                }
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .directive('mdtAnimateSortIconHandler', mdtAnimateSortIconHandlerDirective);
+}());
+(function(){
+    'use strict';
+
+    function mdtCustomCellDirective(){
+        return {
+            restrict: 'E',
+            transclude: true,
+            template: '<span class="customCell" ng-transclude></span>',
+            require: '^mdtTable',
+            link: {
+                pre: function($scope, element, attrs, ctrl, transclude){
+                    transclude(function (clone) {
+                        var columnKey = attrs.columnKey;
+
+                        ctrl.dataStorage.customCells[columnKey] = {
+                            scope: $scope,
+                            htmlContent: clone.clone()
+                        };
+                    });
+                }
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .directive('mdtCustomCell', mdtCustomCellDirective);
+}());
+(function(){
+    'use strict';
+
+    function mdtSelectAllRowsHandlerDirective(){
+        return {
+            restrict: 'A',
+            scope: false,
+            require: '^mdtTable',
+            link: function($scope, element, attrs, ctrl){
+                $scope.selectAllRows = false;
+
+                $scope.$watch('selectAllRows', function(val){
+                    ctrl.dataStorage.setAllRowsSelected(val, $scope.isPaginationEnabled());
+                });
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .directive('mdtSelectAllRowsHandler', mdtSelectAllRowsHandlerDirective);
+}());
+
+(function(){
+    'use strict';
+
+    function mdtSortHandlerDirective(){
+        return {
+            restrict: 'A',
+            scope: false,
+            require: '^mdtTable',
+            link: function($scope, element, attrs, ctrl){
+                var columnIndex = $scope.$index;
+                $scope.isSorted = isSorted;
+                $scope.direction = 1;
+
+                element.on('click', sortHandler);
+
+                function sortHandler(){
+                    if($scope.sortableColumns){
+                        $scope.$apply(function(){
+                            $scope.direction = ctrl.dataStorage.sortByColumn(columnIndex, $scope.headerRowData.sortBy);
+                        });
+                    }
+                }
+
+                function isSorted(){
+                    return ctrl.dataStorage.sortByColumnLastIndex === columnIndex;
+                }
+
+                $scope.$on('$destroy', function(){
+                    element.off('click', sortHandler);
+                });
+            }
+        };
+    }
+
+    angular
+        .module('mdDataTable')
+        .directive('mdtSortHandler', mdtSortHandlerDirective);
+}());
 (function(){
     'use strict';
 
@@ -1313,189 +1496,6 @@
     angular
         .module('mdDataTable')
         .directive('mdtHeaderRow', mdtHeaderRowDirective);
-}());
-(function(){
-    'use strict';
-
-    mdtAddAlignClass.$inject = ['ColumnAlignmentHelper'];
-    function mdtAddAlignClass(ColumnAlignmentHelper){
-        return {
-            restrict: 'A',
-            scope: {
-                mdtAddAlignClass: '='
-            },
-            link: function($scope, element){
-                var classToAdd = ColumnAlignmentHelper.getColumnAlignClass($scope.mdtAddAlignClass);
-
-                element.addClass(classToAdd);
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .directive('mdtAddAlignClass', mdtAddAlignClass);
-}());
-(function(){
-    'use strict';
-
-    mdtAddHtmlContentToCellDirective.$inject = ['$parse', '$compile', '$rootScope'];
-    function mdtAddHtmlContentToCellDirective($parse, $compile, $rootScope){
-        return {
-            restrict: 'A',
-            require: '^?mdtTable',
-            link: function($scope, element, attr, ctrl){
-
-                $scope.$watch(function(){
-                    //this needs to be like that. Passing only `attr.mdtAddHtmlContentToCell` will cause digest to go crazy 10 times.
-                    // so we has to say explicitly that we only want to watch the content and nor the attributes, or the additional metadata.
-                    var val = $parse(attr.mdtAddHtmlContentToCell)($scope);
-
-                    return val.value;
-
-                }, function(val){
-                    element.empty();
-
-                    var originalValue = $parse(attr.mdtAddHtmlContentToCell)($scope);
-
-                    // ctrl doesn't exist on the first row, making html content impossible to show up.
-                    // TODO: make it as a global service .... I know but any better idea?
-                    if(originalValue.columnKey && ctrl && ctrl.dataStorage.customCells[originalValue.columnKey]){
-                        var customCellData = ctrl.dataStorage.customCells[originalValue.columnKey];
-
-                        var clonedHtml = customCellData.htmlContent;
-
-                        //append value to the scope
-                        var localScope = $rootScope.$new();
-
-                        localScope.clientScope = customCellData.scope;
-                        localScope.value = val;
-
-                        $compile(clonedHtml)(localScope, function(cloned){
-                            element.append(cloned);
-                        });
-
-                    }else{
-                        element.append(val);
-                    }
-
-                }, false);
-                // issue with false value. If fields are editable then it won't reflect the change.
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .directive('mdtAddHtmlContentToCell', mdtAddHtmlContentToCellDirective);
-}());
-(function(){
-    'use strict';
-
-    function mdtAnimateSortIconHandlerDirective(){
-        return {
-            restrict: 'A',
-            scope: false,
-            link: function($scope, element){
-                if($scope.animateSortIcon){
-                    element.addClass('animate-sort-icon');
-                }
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .directive('mdtAnimateSortIconHandler', mdtAnimateSortIconHandlerDirective);
-}());
-(function(){
-    'use strict';
-
-    function mdtCustomCellDirective(){
-        return {
-            restrict: 'E',
-            transclude: true,
-            template: '<span class="customCell" ng-transclude></span>',
-            require: '^mdtTable',
-            link: {
-                pre: function($scope, element, attrs, ctrl, transclude){
-                    transclude(function (clone) {
-                        var columnKey = attrs.columnKey;
-
-                        ctrl.dataStorage.customCells[columnKey] = {
-                            scope: $scope,
-                            htmlContent: clone.clone()
-                        };
-                    });
-                }
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .directive('mdtCustomCell', mdtCustomCellDirective);
-}());
-(function(){
-    'use strict';
-
-    function mdtSelectAllRowsHandlerDirective(){
-        return {
-            restrict: 'A',
-            scope: false,
-            require: '^mdtTable',
-            link: function($scope, element, attrs, ctrl){
-                $scope.selectAllRows = false;
-
-                $scope.$watch('selectAllRows', function(val){
-                    ctrl.dataStorage.setAllRowsSelected(val, $scope.isPaginationEnabled());
-                });
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .directive('mdtSelectAllRowsHandler', mdtSelectAllRowsHandlerDirective);
-}());
-
-(function(){
-    'use strict';
-
-    function mdtSortHandlerDirective(){
-        return {
-            restrict: 'A',
-            scope: false,
-            require: '^mdtTable',
-            link: function($scope, element, attrs, ctrl){
-                var columnIndex = $scope.$index;
-                $scope.isSorted = isSorted;
-                $scope.direction = 1;
-
-                element.on('click', sortHandler);
-
-                function sortHandler(){
-                    if($scope.sortableColumns){
-                        $scope.$apply(function(){
-                            $scope.direction = ctrl.dataStorage.sortByColumn(columnIndex, $scope.headerRowData.sortBy);
-                        });
-                    }
-                }
-
-                function isSorted(){
-                    return ctrl.dataStorage.sortByColumnLastIndex === columnIndex;
-                }
-
-                $scope.$on('$destroy', function(){
-                    element.off('click', sortHandler);
-                });
-            }
-        };
-    }
-
-    angular
-        .module('mdDataTable')
-        .directive('mdtSortHandler', mdtSortHandlerDirective);
 }());
 (function(){
     'use strict';
